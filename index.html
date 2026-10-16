@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#f7f7f8">
+  <title>数织 Nonogram</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- 主页：关卡选择 -->
+  <section id="view-home" class="view">
+    <header class="bar">
+      <h1>数织 <small>Nonogram</small></h1>
+      <button id="btnStats" class="ghost">统计</button>
+      <button id="btnAbout" class="ghost">关于</button>
+    </header>
+    <div class="home-body">
+      <button id="btnContinue" class="continue" style="display:none"></button>
+      <div id="sizeTabs" class="tabs"></div>
+      <div id="levelGrid" class="level-grid"></div>
+      <button id="btnMore" class="ghost more" style="display:none">加载更多</button>
+    </div>
+    <footer class="home-foot">
+      <button id="btnRandom">随机一局</button>
+    </footer>
+  </section>
+
+  <!-- 表情包关卡（评估样张） -->
+  <section id="view-stickers" class="view">
+    <header class="bar">
+      <button id="btnStickersBack" class="ghost" aria-label="返回">‹</button>
+      <h1>表情包关卡 <small>评估样张</small></h1>
+      <span class="bar-credit">非商用同人使用 © 米哈游/HoYoverse</span>
+    </header>
+    <div class="home-body">
+      <div class="sticker-opt">
+        <label class="opt">预览
+          <select id="stickerPreviewSel" class="sel">
+            <option value="auto">自动（完成前原图 / 完成后缩略图）</option>
+            <option value="sticker">始终显示原表情包</option>
+            <option value="thumb">始终显示缩略图</option>
+          </select>
+        </label>
+      </div>
+      <div id="stickerGrid" class="level-grid"></div>
+      <button id="btnStickerMore" class="ghost" style="display:none; margin: 12px auto 0;"></button>
+    </div>
+  </section>
+
+  <!-- 游戏视图 -->
+  <section id="view-game" class="view">
+    <!-- 隐藏密码框：密码输入框被系统禁用输入法，桌面端聚焦它以保快捷键不被拼音拦截 -->
+    <input id="imeTrap" type="password" readonly autocomplete="off" aria-hidden="true" tabindex="-1">
+    <header class="bar game-bar">
+      <button id="btnBack" class="ghost" aria-label="返回">‹</button>
+      <span id="gameName" class="game-name"></span>
+      <span id="gameTimer" class="mono"></span>
+      <span id="gameProgress" class="mono"></span>
+    </header>
+    <div class="board-wrap">
+      <canvas id="board"></canvas>
+    </div>
+    <footer class="toolbar">
+      <button id="btnMode">填色</button>
+      <span class="sep"></span>
+      <button id="btnUndo" aria-label="撤销">↶</button>
+      <button id="btnRedo" aria-label="重做">↷</button>
+      <span class="sep"></span>
+      <button id="btnZoomOut" aria-label="缩小">−</button>
+      <button id="btnFit" aria-label="适配屏幕">□</button>
+      <button id="btnZoomIn" aria-label="放大">＋</button>
+      <button id="btnFont" aria-label="数字大小">A</button>
+      <span class="sep"></span>
+      <button id="btnReset" aria-label="重开">⟲</button>
+      <button id="btnNewRandom" aria-label="换一局随机">⟳</button>
+    </footer>
+  </section>
+
+  <!-- 关于 -->
+  <section id="view-about" class="view">
+    <header class="bar">
+      <h1>关于</h1>
+      <button id="btnAboutBack" class="ghost">‹ 返回</button>
+    </header>
+    <div class="about-body">
+      <h2>玩法</h2>
+      <p>网格外的数字表示该行 / 列中连续填色块的长度，按顺序排列，块之间至少隔 1 格。全部满足即揭晓图案。</p>
+      <p>左键 / 点按循环切换：填色 → × → 清空；右键直接标 ×；拖动可连画。数字变灰表示对应块已吻合；提示底色变红表示该行 / 列填色与提示冲突；整行 / 列与提示一致且正确时自动锁定补 ×。</p>
+      <h2>设置</h2>
+      <label class="opt"><input type="checkbox" id="vibrateChk"> 触屏振动反馈</label>
+      <label class="opt">变灰模式
+        <select id="grayModeSel" class="sel">
+          <option value="strict">严格（无误导，默认）</option>
+          <option value="loose">宽松（进度感更强）</option>
+        </select>
+      </label>
+      <h2>图案来源</h2>
+      <ul id="creditList" class="credits"></ul>
+      <p class="ver">数织 v1.0 · 无广告 · 数据保存在本机</p>
+    </div>
+  </section>
+
+  <!-- 统计 -->
+  <section id="view-stats" class="view">
+    <header class="bar">
+      <h1>统计</h1>
+      <button id="btnStatsBack" class="ghost">‹ 返回</button>
+    </header>
+    <div class="stats-body">
+      <div id="statCards" class="stat-cards"></div>
+      <h2>分尺寸进度</h2>
+      <div id="statSizes"></div>
+      <p class="ver" id="statNote"></p>
+      <div class="stat-sync">
+        <button id="btnExport" class="ghost">导出进度</button>
+        <button id="btnImport" class="ghost">导入进度</button>
+        <button id="btnQrSync" class="ghost">二维码同步</button>
+      </div>
+      <input type="file" id="fileImport" accept=".json,application/json" hidden>
+      <p class="ver" id="syncNote"></p>
+    </div>
+  </section>
+
+  <!-- 胜利弹层 -->
+  <div id="winOverlay" class="overlay">
+    <div class="dialog">
+      <h2>解开了！</h2>
+      <p id="winName" class="win-name"></p>
+      <p id="winMeta" class="win-meta"></p>
+      <div class="dialog-actions">
+        <button id="btnWinBack">返回列表</button>
+        <button id="btnWinRandom" class="primary">再来一局（随机）</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 二维码同步弹层 -->
+  <div id="qrOverlay" class="overlay">
+    <div class="dialog qr-dialog">
+      <h2>二维码同步</h2>
+      <div id="qrView">
+        <p class="ver" id="qrHint"></p>
+        <canvas id="qrCanvas"></canvas>
+        <p class="ver">另一台设备打开本游戏 → 统计 → 切换为扫码；无相机时用下方粘贴导入</p>
+      </div>
+      <div id="qrScanView" style="display:none">
+        <video id="qrVideo" playsinline muted></video>
+        <p class="ver" id="scanHint">对准对方屏幕上的二维码</p>
+      </div>
+      <div class="dialog-actions">
+        <button id="btnQrClose" class="ghost">关闭</button>
+        <button id="btnQrToggle" class="ghost">切换为扫码</button>
+      </div>
+      <details id="qrPasteBox">
+        <summary>粘贴文本导入（相机不可用时）</summary>
+        <textarea id="qrPasteText" rows="3" placeholder="用微信等扫一扫识别文字后复制到这里"></textarea>
+        <button id="btnQrPasteImport" class="ghost small">导入粘贴内容</button>
+      </details>
+    </div>
+  </div>
+
+  <script src="js/core.js"></script>
+  <script src="js/solver.js"></script>
+  <script src="js/vendor/qrcode.min.js"></script>
+  <script src="js/vendor/jsqr.min.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/input.js"></script>
+  <script src="js/levels.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="data/packs.js"></script>
+  <!-- 图标关卡包（file:// 直开时 fetch 受限，改由 script 标签预载；未生成时 404 无害） -->
+  <script src="data/icons-5.jsonp.js"></script>
+  <script src="data/icons-10.jsonp.js"></script>
+  <script src="data/icons-15.jsonp.js"></script>
+  <script src="data/icons-20.jsonp.js"></script>
+  <script src="data/icons-25.jsonp.js"></script>
+  <!-- 表情包关卡（未生成时 404 无害） -->
+  <script src="data/stickers-25.jsonp.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

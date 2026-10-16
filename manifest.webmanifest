@@ -1,0 +1,20 @@
+{
+  "name": "数织 Nonogram",
+  "short_name": "数织",
+  "description": "无广告的黑白数织逻辑游戏，5×5 到 25×25",
+  "lang": "zh-CN",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#171717",
+  "theme_color": "#0aa06e",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
