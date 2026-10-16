@@ -109,8 +109,14 @@ button.ghost:hover { color: var(--text); }
 .lv img { width: 72px; height: 72px; border-radius: 6px; object-fit: contain; background: var(--surface); }
 .tab.sticker { border: 1px dashed var(--border); color: var(--text-muted); }
 .tab.sticker:hover { color: var(--text); }
+.tab.filter { margin-left: auto; }
 .lv span { font-size: 12px; }
 .lv small { color: var(--text-muted); font-size: 11px; letter-spacing: 1px; }
+.lv.flash { animation: lv-flash 1.6s ease; }
+@keyframes lv-flash {
+  0%, 60% { outline: 3px solid var(--brand); outline-offset: 2px; }
+  100% { outline: 3px solid transparent; outline-offset: 2px; }
+}
 .home-foot {
   display: flex; gap: 8px; padding: 12px 14px;
   border-top: 1px solid var(--border); flex: 0 0 auto;
@@ -176,5 +182,7 @@ button.ghost:hover { color: var(--text); }
 .dialog h2 { margin: 0 0 6px; }
 .win-name { font-size: 18px; font-weight: 600; margin: 6px 0; }
 .win-meta { color: var(--text-muted); font-size: 13px; margin: 0 0 18px; }
+.win-thumb { display: flex; justify-content: center; margin: 6px 0 14px; }
+.win-thumb canvas { width: 144px; height: 144px; border-radius: 10px; border: 1px solid var(--border); }
 .dialog-actions { display: flex; gap: 8px; }
 .dialog-actions button { flex: 1; }

@@ -37,8 +37,17 @@
   }
 
   function write() {
-    try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { /* 忽略配额错误 */ }
+    try { localStorage.setItem(KEY, JSON.stringify(data)); writeWarned = false; }
+    catch (e) {
+      // 配额满 / 隐私模式：进度可能无法保存，只警告一次避免刷屏
+      if (!writeWarned) {
+        writeWarned = true;
+        console.warn('[存档] localStorage 写入失败，进度可能丢失：', e);
+        alert('存档写入失败（存储空间不足或隐私模式），进度可能无法保存');
+      }
+    }
   }
+  let writeWarned = false;
 
   window.addEventListener('beforeunload', () => { if (saveTimer) { clearTimeout(saveTimer); write(); } });
 

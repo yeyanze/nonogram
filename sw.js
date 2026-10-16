@@ -1,5 +1,5 @@
 /* sw.js — Service Worker：network-first（在线总是最新，离线回退缓存） */
-const CACHE = 'nonogram-v14';
+const CACHE = 'nonogram-v16';
 const ASSETS = [
   './',
   './index.html',
@@ -20,8 +20,10 @@ const ASSETS = [
   './data/icons-20.jsonp.js',
   './data/icons-25.jsonp.js',
   './data/stickers-25.jsonp.js',
+  './data/stickers-thumbs.js',
   './icon.svg',
   './manifest.webmanifest',
+    // sticker-thumbs: 192 张 webp 已打包为 base64 内嵌 data/stickers-thumbs.js
 ];
 
 self.addEventListener('install', (e) => {

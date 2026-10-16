@@ -17,7 +17,7 @@
   };
   const mq = window.matchMedia('(prefers-color-scheme: dark)');
   (mq.addEventListener ? mq.addEventListener('change', onTheme) : mq.addListener(onTheme));
-  function onTheme() { NG.theme.refresh(); if (renderer) renderer.requestDraw(); }
+  function onTheme() { NG.theme.refresh(); if (renderer) renderer.invalidateClues(); }
 
   /* ---------- 视图切换 ---------- */
   const views = ['home', 'game', 'about', 'stats', 'stickers'];
@@ -38,6 +38,7 @@
   /* ---------- 主页 ---------- */
   let curSize = null;
   let homeToken = 0; // 防快速切 tab 的渲染竞态
+  let homePager = null; // { ensure(idx), hideDone } 供「下一个未完成」滚动定位
   async function renderHome() {
     const sizes = NG.levels.sizes();
     if (!curSize || !sizes.includes(curSize)) curSize = sizes[0];
@@ -58,6 +59,16 @@
     stickerBtn.textContent = '表情包';
     stickerBtn.addEventListener('click', () => { renderStickers(); show('stickers'); });
     tabs.appendChild(stickerBtn);
+    // 隐藏已完成开关
+    const hideDone = !!NG.storage.data.settings.hideDone;
+    const hideBtn = document.createElement('button');
+    hideBtn.className = 'tab filter' + (hideDone ? ' on' : '');
+    hideBtn.textContent = '隐藏已完成';
+    hideBtn.addEventListener('click', () => {
+      NG.storage.setSetting('hideDone', !hideDone);
+      renderHome();
+    });
+    tabs.appendChild(hideBtn);
     // 图标关卡按需加载：当前规格 + 继续上局所属规格
     const last = NG.storage.data.last;
     const lastSize = last ? Number((last.match(/\d+/) || [])[0]) : null;
@@ -65,9 +76,12 @@
     if (lastSize && sizes.includes(lastSize)) loads.push(NG.levels.ensureIcons(lastSize));
     await Promise.all(loads);
     if (token !== homeToken) return; // 已切换到其他规格，放弃本次渲染
+    const base = NG.levels.bySize(curSize);
+    const all = hideDone
+      ? base.filter((lv) => { const r = NG.storage.levelState(lv.id); return !(r && r.done); })
+      : base;
     const grid = $('#levelGrid');
     grid.innerHTML = '';
-    const all = NG.levels.bySize(curSize);
     const PAGE = 120;
     let shown = 0;
     function appendPage() {
@@ -96,6 +110,10 @@
       } else more.style.display = 'none';
     }
     appendPage();
+    homePager = {
+      ensure(idx) { while (shown <= idx && shown < all.length) appendPage(); },
+      hideDone,
+    };
     // 继续上局
     const cont = $('#btnContinue');
     const lastId = NG.storage.data.last;
@@ -203,22 +221,26 @@
   const game = {
     level: null, solution: null, clues: null,
     state: null, locks: null,
+    rowDone: [], colDone: [],   // 行/列完成布尔（locks = rowDone ∪ colDone 的投影）
     grayRows: [], grayCols: [], alertRows: [], alertCols: [],
     undoStack: [], redoStack: [],
     solved: false, elapsed: 0, timerRun: false, timerId: 0,
     hover: -1,
+    pin: null,   // 钉选高亮 'r3' / 'c7' | null
   };
+  // 只读调试句柄（控制台排查/自动化验证用；仅引用不劫持）
+  NG.debug = { game, renderer, get mode() { return mode; } };
 
   let backTarget = 'home'; // 游戏内返回目标：home | stickers（记录进入来源）
   function openLevel(lv, resume, from) {
-    if (from) backTarget = from;
+    backTarget = from || 'home';   // 每次进关都重置：未显式指定来源的一律返回主页
     game.level = lv;
     game.solution = NG.core.bitsToCells(lv.solution);
     game.clues = NG.core.cluesFromSolution(game.solution, lv.size);
     game.state = NG.core.createState(lv.size);
     NG.core.applyAutoPreset(game.state, game.clues);
     game.undoStack = []; game.redoStack = [];
-    game.solved = false; game.elapsed = 0; game.hover = -1;
+    game.solved = false; game.elapsed = 0; game.hover = -1; game.pin = null;
 
     const rec = resume && NG.storage.levelState(lv.id);
     if (rec && rec.state) {
@@ -227,9 +249,6 @@
       // 旧存档可能缺少开局预填规则，幂等补一次
       NG.core.applyAutoPreset(game.state, game.clues);
       game.elapsed = rec.time || 0;
-      // 恢复后重放锁定推导
-      refresh(false);
-      // 已锁定的正确行无需撤销恢复，undo 栈为空即可
     }
     refresh();
 
@@ -240,13 +259,28 @@
     startTimer();
   }
 
+  /* 计时：墙钟差值累加（后台节流不再少计），页面隐藏即暂停 */
+  let lastTs = 0, carryMs = 0, shownSec = -1;
   function startTimer() {
     if (game.timerId) clearInterval(game.timerId);
+    lastTs = Date.now(); carryMs = 0;
     game.timerId = setInterval(() => {
-      if (game.timerRun) { game.elapsed++; updateHUD(); }
-    }, 1000);
+      const now = Date.now();
+      if (game.timerRun && curView === 'game' && !document.hidden && !game.solved) {
+        carryMs += now - lastTs;
+        while (carryMs >= 1000) { game.elapsed++; carryMs -= 1000; }
+        if (game.elapsed !== shownSec) { shownSec = game.elapsed; updateHUD(); }
+      } else carryMs = 0;
+      lastTs = now;
+    }, 500);
     updateHUD();
   }
+  document.addEventListener('visibilitychange', () => {
+    // 切后台即暂停计时并把进度落盘
+    if (document.hidden && game.level && !game.solved) {
+      NG.storage.saveLevelState(game.level.id, { state: game.state.cells.join(''), time: game.elapsed });
+    }
+  });
 
   function fmtTime(s) {
     const m = Math.floor(s / 60), sec = s % 60;
@@ -261,26 +295,58 @@
     $('#btnRedo').disabled = game.redoStack.length === 0;
   }
 
-  /** 全量刷新：锁定推导、变灰、警示、存档、渲染、胜利检测 */
-  function refresh(persist) {
+  /**
+   * 刷新：锁定推导、变灰、警示、存档、渲染、胜利检测
+   * @param {boolean} persist 是否写存档（paint 高频路径传 false，由 paintEnd 统一落盘）
+   * @param {number} [dirty] 被改格子的 index（增量模式：只重推该行+该列）
+   */
+  function refresh(persist, dirty) {
     const { size, cells } = game.state;
-    const mode = NG.storage.data.settings.grayMode || 'strict';
-    game.locks = NG.core.computeLocks(game.state, game.clues, game.solution);
-    game.grayRows = [];
-    game.grayCols = [];
-    game.alertRows = [];
-    game.alertCols = [];
-    for (let r = 0; r < size; r++) {
-      const g = NG.core.grayState(cells, game.clues.rows[r], size, r, true, mode);
-      game.grayRows.push(g.gray);
-      game.alertRows.push(g.alert);
+    const gm = NG.storage.data.settings.grayMode || 'strict';
+    if (dirty == null) {
+      game.locks = NG.core.computeLocks(game.state, game.clues, game.solution);
+      game.rowDone = [];
+      game.colDone = [];
+      game.grayRows = []; game.grayCols = [];
+      game.alertRows = []; game.alertCols = [];
+      for (let r = 0; r < size; r++) {
+        game.rowDone.push(NG.core.lineMatches(cells, game.clues.rows[r], size, r, true) &&
+          NG.core.lineCorrect(cells, game.solution, size, r, true));
+        const g = NG.core.grayState(cells, game.clues.rows[r], size, r, true, gm);
+        game.grayRows.push(g.gray);
+        game.alertRows.push(g.alert);
+      }
+      for (let c = 0; c < size; c++) {
+        game.colDone.push(NG.core.lineMatches(cells, game.clues.cols[c], size, c, false) &&
+          NG.core.lineCorrect(cells, game.solution, size, c, false));
+        const g = NG.core.grayState(cells, game.clues.cols[c], size, c, false, gm);
+        game.grayCols.push(g.gray);
+        game.alertCols.push(g.alert);
+      }
+      renderer.setData(currentData(), 'all');
+    } else {
+      // 增量：锁 = 行完成 ∪ 列完成 的并集投影。用完成布尔差量更新，
+      // 只刷新状态确实变化的行/列，避免误清其他线贡献的锁（自动 × 丢失 bug）
+      const r = (dirty / size) | 0, c = dirty % size;
+      const rd1 = NG.core.lineMatches(cells, game.clues.rows[r], size, r, true) &&
+        NG.core.lineCorrect(cells, game.solution, size, r, true);
+      const cd1 = NG.core.lineMatches(cells, game.clues.cols[c], size, c, false) &&
+        NG.core.lineCorrect(cells, game.solution, size, c, false);
+      const rd0 = game.rowDone[r], cd0 = game.colDone[c];
+      if (rd0 !== rd1) {
+        game.rowDone[r] = rd1;
+        for (let k = 0; k < size; k++) game.locks[r * size + k] = rd1 ? 1 : (game.colDone[k] ? 1 : 0);
+      }
+      if (cd0 !== cd1) {
+        game.colDone[c] = cd1;
+        for (let k = 0; k < size; k++) game.locks[k * size + c] = cd1 ? 1 : (game.rowDone[k] ? 1 : 0);
+      }
+      const gr = NG.core.grayState(cells, game.clues.rows[r], size, r, true, gm);
+      game.grayRows[r] = gr.gray; game.alertRows[r] = gr.alert;
+      const gc = NG.core.grayState(cells, game.clues.cols[c], size, c, false, gm);
+      game.grayCols[c] = gc.gray; game.alertCols[c] = gc.alert;
+      renderer.setData(currentData(), { rows: [r], cols: [c] });
     }
-    for (let c = 0; c < size; c++) {
-      const g = NG.core.grayState(cells, game.clues.cols[c], size, c, false, mode);
-      game.grayCols.push(g.gray);
-      game.alertCols.push(g.alert);
-    }
-    renderer.setData(currentData());
     updateHUD();
     if (persist !== false && !game.solved) {
       NG.storage.saveLevelState(game.level.id, { state: cells.join(''), time: game.elapsed });
@@ -298,6 +364,7 @@
       alertRows: game.alertRows,
       alertCols: game.alertCols,
       hover: game.hover,
+      pin: game.pin,
       solved: game.solved,
       solution: game.solution,
       debugSolution: debugReveal ? game.solution : null,
@@ -321,7 +388,7 @@
       if (curTx) curTx.push({ i: index, from: game.state.cells[index], to: value });
       game.state.cells[index] = value;
       if (NG.storage.data.settings.vibrate && navigator.vibrate) navigator.vibrate(6);
-      refresh();
+      refresh(false, index);   // 高频路径：不落盘、增量重推
     },
     paintEnd() {
       if (curTx && curTx.length) {
@@ -335,7 +402,14 @@
     hover(index) {
       if (game.hover === index) return;
       game.hover = index;
+      renderer.setData(currentData());   // 提示层已缓存，只重绘棋盘
+    },
+    cluePin(key) {
+      game.pin = game.pin === key ? null : key;
       renderer.setData(currentData());
+    },
+    axisLock() {
+      return NG.storage.data.settings.axisLock !== false;   // 默认开启
     },
   });
 
@@ -428,6 +502,13 @@
     $('#winMeta').textContent = game.level.size + '×' + game.level.size +
       (game.level.author ? ' · 图案：' + game.level.author : '') +
       ' · 用时 ' + fmtTime(game.elapsed);
+    // 完成图案缩略图（随机关不入存档，关掉弹窗就看不到了）
+    const winThumb = $('#winThumb');
+    winThumb.innerHTML = '';
+    const th = document.createElement('canvas');
+    th.width = 144; th.height = 144;
+    drawThumb(th, game.level, true);
+    winThumb.appendChild(th);
     $('#winOverlay').classList.add('show');
     if (NG.storage.data.settings.vibrate && navigator.vibrate) navigator.vibrate([60, 40, 60]);
   }
@@ -456,6 +537,25 @@
   }
   $('#btnRandom').addEventListener('click', () => {
     startRandom(curSize, $('#btnRandom'));
+  });
+  // 跳到本规格下一个未完成关卡（隐藏已完成时即列表第一项）
+  $('#btnNext').addEventListener('click', () => {
+    const base = NG.levels.bySize(curSize);
+    let target = -1;
+    for (let i = 0; i < base.length; i++) {
+      const r = NG.storage.levelState(base[i].id);
+      if (!(r && r.done)) { target = i; break; }
+    }
+    if (target < 0) { alert('当前规格已全部完成！'); return; }
+    if (!homePager) return;
+    const idx = homePager.hideDone ? 0 : target;
+    homePager.ensure(idx);
+    const card = $('#levelGrid').children[idx];
+    if (card) {
+      card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      card.classList.add('flash');
+      setTimeout(() => card.classList.remove('flash'), 1800);
+    }
   });
   // 游戏内"换一局"：生成同尺寸新随机关
   $('#btnNewRandom').addEventListener('click', () => {
@@ -779,6 +879,12 @@
   grayModeSel.addEventListener('change', () => {
     NG.storage.setSetting('grayMode', grayModeSel.value);
     if (game.level && $('#view-game').classList.contains('active')) refresh();
+  });
+  // 轴向锁定（防手抖误涂）：默认开启，拖动时强制沿起点行/列
+  const axisLockChk = $('#axisLockChk');
+  axisLockChk.checked = NG.storage.data.settings.axisLock !== false;
+  axisLockChk.addEventListener('change', () => {
+    NG.storage.setSetting('axisLock', axisLockChk.checked);
   });
 
   /* ---------- PWA ---------- */

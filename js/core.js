@@ -79,11 +79,12 @@
 
   /**
    * 行/列满足判定：当前填色块模式与提示完全一致
+   * （提示由 cluesFromSolution 产出，天然不含 0，无需再过滤）
    * @returns {boolean} 模式吻合（与位置正确与否无关）
    */
   function lineMatches(cells, clue, size, index, isRow) {
     const runs = runsOf(lineOf(cells, size, index, isRow));
-    const target = clue.filter((n) => n > 0);
+    const target = clue || [];
     if (runs.length !== target.length) return false;
     for (let i = 0; i < runs.length; i++) if (runs[i] !== target[i]) return false;
     return true;
@@ -177,7 +178,7 @@
    * @returns {{gray: boolean[], alert: boolean}} gray 下标对应过滤 0 后的提示数字
    */
   function grayState(cells, clue, size, index, isRow, mode) {
-    const target = (clue || []).filter((n) => n > 0);
+    const target = clue || [];   // cluesFromSolution 产出，天然无 0
     const line = lineOf(cells, size, index, isRow);
     const runs = runsDetail(line, size);
     const n = target.length;
@@ -285,9 +286,36 @@
     return { filled, total };
   }
 
-  /** 难度评级：按尺寸分 1~5 星 */
+  /** 难度评级：按尺寸分 1~5 星（兜底，精确评级见 levels.js 的分位数评级） */
   function difficultyOf(size) {
     return { 5: 1, 10: 2, 15: 3, 20: 4, 25: 5 }[size] || 1;
+  }
+
+  /** 解的求解特征原始分：块密度 + 碎线率 + 填色密度，供同尺寸内分档排序 */
+  function solutionScore(solution, size) {
+    const cells = typeof solution === 'string' ? bitsToCells(solution) : solution;
+    let blocks = 0, singles = 0, filled = 0;
+    for (let r = 0; r < size; r++) {
+      let c = 0;
+      for (let k = 0; k <= size; k++) {
+        const v = k < size && cells[r * size + k] ? 1 : 0;
+        if (v) c++;
+        else if (c) { blocks++; if (c === 1) singles++; c = 0; }
+      }
+    }
+    for (let col = 0; col < size; col++) {
+      let c = 0;
+      for (let k = 0; k <= size; k++) {
+        const v = k < size && cells[k * size + col] ? 1 : 0;
+        if (v) c++;
+        else if (c) { blocks++; if (c === 1) singles++; c = 0; }
+      }
+    }
+    for (let i = 0; i < cells.length; i++) if (cells[i]) filled++;
+    const bpl = blocks / (2 * size);              // 每线平均块数
+    const frag = blocks ? singles / blocks : 0;   // 碎线率（长度 1 的块占比）
+    const density = filled / (size * size);
+    return bpl * 2 + frag * 3 + density;
   }
 
   NG.core = {
@@ -304,5 +332,6 @@
     isSolved,
     progress,
     difficultyOf,
+    solutionScore,
   };
 })();
