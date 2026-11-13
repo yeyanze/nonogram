@@ -137,6 +137,21 @@ button.ghost:hover { color: var(--text); }
 .toolbar button.mark { background: var(--text-muted); color: var(--surface); }
 .toolbar .sep { width: 1px; height: 24px; background: var(--border); margin: 0 4px; flex: 0 0 auto; }
 
+/* 窄屏：底部按钮等分宽度、间距与字号同步压缩，保证全部按钮在一行内可见 */
+@media (max-width: 560px) {
+  .toolbar { gap: 2px; padding: 8px 6px calc(8px + env(safe-area-inset-bottom)); }
+  .toolbar button {
+    flex: 1 1 0; min-width: 0; padding: 12px 0; font-size: 15px; line-height: 1.2;
+  }
+  #btnMode { flex: 1.6 1 0; font-size: 13px; }   /* 文字按钮需要更宽 */
+  .toolbar .sep { margin: 0; }
+}
+@media (max-width: 380px) {
+  .toolbar { gap: 1px; padding: 8px 4px calc(8px + env(safe-area-inset-bottom)); }
+  .toolbar button { font-size: 14px; padding: 12px 0; }
+  #btnMode { font-size: 12px; }
+}
+
 /* 统计 */
 .stats-body { flex: 1; overflow-y: auto; padding: 16px; max-width: 640px; }
 .stats-body h2 { font-size: 14px; color: var(--text-muted); margin: 18px 0 8px; }
